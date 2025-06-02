@@ -1,0 +1,39 @@
+# ── Elasticsearch 8.x Installation ──
+
+sudo apt install openjdk-11-jdk
+java -version
+
+sudo wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+sudo apt-get install apt-transport-https
+sudo echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+sudo apt update
+
+sudo apt-get install elasticsearch
+# The installer will print a temporary 'elastic' user password—copy it.
+
+sudo systemctl enable elasticsearch
+sudo systemctl start elasticsearch
+
+# Verify with curl (replace <PASSWORD>):
+curl -k "https://localhost:9200" -u elastic:<PASSWORD>
+
+# ── Kibana Installation & Enrollment ──
+
+sudo apt-get update
+sudo apt-get install kibana
+
+# In a new terminal, generate an enrollment token:
+cd /usr/share/elasticsearch/bin/
+sudo /usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s kibana
+# Copy the token output
+
+# Enroll Kibana:
+sudo /usr/share/kibana/bin/kibana-setup
+<PASTE_TOKEN_HERE>
+
+# Edit /etc/kibana/kibana.yml:
+#   server.host: "0.0.0.0"     # or specific IP
+
+sudo systemctl restart kibana.service
+sudo systemctl enable kibana.service
+sudo systemctl status kibana.service
