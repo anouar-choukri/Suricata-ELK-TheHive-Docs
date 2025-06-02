@@ -1,0 +1,158 @@
+# ── TheHive 4 Installation ──
+
+sudo apt update -y && sudo apt upgrade -y
+sudo apt-get install curl -y
+
+# 1) Cassandra Setup
+
+sudo echo "deb [signed-by=/etc/apt/keyrings/apache-cassandra.asc] https://debian.cassandra.apache.org 311x main" | sudo tee -a /etc/apt/sources.list.d/cassandra.sources.list
+sudo curl -o /etc/apt/keyrings/apache-cassandra.asc https://downloads.apache.org/cassandra/KEYS
+sudo apt update -y && sudo apt upgrade -y
+
+sudo apt-get install -y openjdk-8-jre-headless -y
+echo JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64" | sudo tee -a /etc/environment
+export JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+
+sudo apt install cassandra -y
+nodetool status
+java -version
+
+sudo curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/elastic.gpg > /dev/null
+sudo echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-7.x.list
+sudo apt update -y && sudo apt upgrade -y
+
+sudo curl -fsSL https://raw.githubusercontent.com/TheHive-Project/TheHive/master/PGP-PUBLIC-KEY | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/thehive.gpg > /dev/null
+sudo echo 'deb https://deb.thehive-project.org release main' | sudo tee -a /etc/apt/sources.list.d/thehive-project.list
+sudo apt update && sudo apt upgrade
+
+cqlsh localhost 9042
+# In cqlsh:
+#   UPDATE system.local SET cluster_name = 'thp' where key='local';
+#   exit
+
+nodetool status
+nodetool flush
+
+
+# Edit /etc/cassandra/cassandra.yaml:
+# sudo nano /etc/cassandra/cassandra.yaml
+#   cluster_name: 'thp'
+#   listen_address: '127.0.0.1'
+#   rpc_address: '127.0.0.1'
+#   hints_directory: '/var/lib/cassandra/hints'
+
+sudo systemctl restart Cassandra
+sudo systemctl status cassandra
+sudo systemctl enable cassandra
+
+sudo apt install net-tools
+netstat -an | grep 7000
+
+# 2) Elasticsearch for TheHive
+
+sudo apt install elasticsearch -y
+sudo systemctl start elasticsearch
+sudo systemctl status elasticsearch
+sudo systemctl enable elasticsearch
+
+netstat -an | grep 9200
+
+# 3) TheHive 4
+
+sudo apt-get install thehive4 -y
+
+sudo chown thehive:thehive -R /opt/thp/thehive/files
+sudo chown thehive:thehive -R /opt/thp/thehive/index
+
+sudo systemctl start thehive.service
+sudo systemctl status thehive.service
+sudo systemctl enable thehive.service
+
+
+# Default login:
+#   user: admin
+#   pass: secret
+
+
+
+# ── Cortex Installation ──
+
+# 1) Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+docker --version
+sudo groupadd docker
+sudo usermod -aG docker $USER
+
+# 2) Run the official install script
+wget -q -O /tmp/install.sh https://archives.strangebee.com/scripts/install.sh ; sudo -v ; bash /tmp/install.sh
+# choose option 4
+
+# If “already on system” appears, go with this.
+
+sudo unzip /tmp/floss.zip -d /usr/bin
+cd /opt
+sudo git clone https://github.com/TheHive-Project/Cortex-Analyzers.git
+sudo chown -R cortex:cortex /opt/Cortex-Analyzers
+
+sudo awk '{print $0}' /opt/Cortex-Analyzers/*/*/requirements.txt | \
+  while read line ; do
+    echo -e "$line\n" | awk -F "[=]{2}|[<>~;]{1}" '{ print $1 }' | tr -d '\r'
+  done | \
+  grep -v -E "enum|future" | \
+  grep -v "git+https://github.com/fireeye/stringsifter.git@python3.7#egg=stringsifter" | \
+  sort -u > /tmp/requirements.txt
+
+echo "stringsifter" >> /tmp/requirements.txt
+sudo pip3 install -r /tmp/requirements.txt
+
+fix
+pip3 install cortexutils==2.2.0
+sudo pip3 install --no-deps -r /tmp/requirements.txt
+pip3 show cortexutils
+awk '{print $0}' /opt/Cortex-Analyzers/*/*/requirements.txt | \
+  grep -iv "cortexutils" | \
+  while read line ; do
+    echo -e "$line\n" | awk -F "[=<>~;]+" '{ print $1 }' | tr -d '\r'
+  done | \
+  grep -v -E "enum|future" | \
+  grep -v "git+https://github.com/fireeye/stringsifter.git@python3.7#egg=stringsifter" | \
+  sort -u > /tmp/clean-requirements.txt
+
+echo "stringsifter" >> /tmp/clean-requirements.txt
+pip3 install -r /tmp/clean-requirements.txt
+
+# 3) Start & enable Cortex
+sudo systemctl daemon-reload
+sudo systemctl enable cortex
+sudo systemctl start cortex
+sudo systemctl status cortex
+
+# 4) Configuring Cortex:
+sudo cp /etc/cortex/application.conf /etc/cortex/application.conf.bak
+sudo sed -i \
+  -e 's_"[^"]*analyzers.json",_"\"/opt/Cortex-Analyzers/analyzers\",_' \
+  -e 's_"[^"]*responders.json",_"\"/opt/Cortex-Analyzers/responders\",_' \
+  /etc/cortex/application.conf
+
+
+sudo systemctl restart cortex
+sudo systemctl status cortex
+
+>>to fix the "" problem 
+sudo grep -E 'analyzers|responders' /etc/cortex/application.conf
+
+to fix the "" problem 
+sudo nano /etc/cortex/application.conf
+and remove them 
+
+enabling and running the services :
+sudo systemctl daemon-reload
+sudo systemctl enable cortex
+sudo systemctl start cortex
+sudo systemctl start elasticsearch
+
+
+# Default login:
+#   user: admin
+#   pass: admincortex
