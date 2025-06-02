@@ -1,0 +1,115 @@
+# ── ElastAlert2 Installation ──
+
+# 1. Create a project directory (optional):
+mkdir elastalert
+cd elastalert
+
+# 2. Create config & rules folders:
+sudo mkdir rules
+sudo touch config.yaml
+sudo touch rules/my-rule.yaml
+
+# 3. Install Python 3.11 & create a venv:
+sudo apt install python3.11 python3.11-venv
+python3.11 -m venv env
+source env/bin/activate
+pip install elastalert2
+
+# 4. Ensure Elasticsearch client is 7.x:
+pip show elasticsearch
+pip uninstall elasticsearch -y      # if version ≥ 8.x else no need move to 5
+pip install "elasticsearch>=7.13.0,<8.0.0"
+
+# 5. Populate /elastalert/config.yaml:
+
+rules_folder: /home/server/elastalert/rules
+
+run_every:
+  seconds: 10
+
+buffer_time:
+  minutes: 15
+
+es_host: 144.172.92.184
+es_port: 9200
+
+writeback_index: elastalert_status
+
+use_ssl: true         # True if you're using HTTPS
+verify_certs: False    # Optional
+es_username: "elastic"    # Optional
+es_password: "yOQdnIPZbvfzljuFY9it"    # Optional
+
+
+writeback_index: elastalert_status
+
+alert_time_limit:
+  days: 2
+
+# 6. Example rule: /elastalert/rules/my-rule.yaml
+
+name: Suricata ICMP Alert Detection
+type: any
+index: filebeat-*
+timeframe:
+  minutes: 5
+
+filter:
+- query:
+    query_string:
+      query: 'suricata.eve.alert.signature:"ICMP Request Detected by Me "'
+
+realert:
+  minutes: 1
+
+include:
+  - source.ip
+  - source.port
+  - destination.ip
+  - destination.port
+  - network.transport
+  - network.direction
+  - host.name
+  - agent.name
+  - suricata.eve.alert.signature
+
+alert: hivealerter
+
+hive_connection:
+  hive_host: http://144.172.98.207
+  hive_port: 9000
+  hive_apikey: API_KEY
+  hive_proxies:
+    http: ''
+    https: ''
+
+hive_alert_config:
+  title: 'ICMP Alert from Suricata'
+  type: 'external'
+  source: 'elastalert'
+  description: 'ICMP request detected by Suricata: "ICMP Request Detected made by me"'
+  severity: 2
+  tags: ['suricata', 'icmp', 'network']
+  tlp: 2
+  status: 'New'
+  follow: True
+
+hive_observable_data_mapping:
+  - ip: source.ip
+    message: "Source IP"
+  - ip: destination.ip
+    message: "Destination IP"
+  - other: network.transport
+    message: "Transport Protocol"
+
+# 7. Create the ElastAlert index:
+elastalert-create-index --config config.yaml
+
+# 8. Test ES connectivity:
+curl -k "https://elastic:<PASSWORD>@144.172.100.213:9200/"
+
+# 9. Run ElastAlert:
+elastalert --verbose --config config.yaml
+
+# 10. To test one rule:
+elastalert --verbose --rule rules/my-rule.yaml
